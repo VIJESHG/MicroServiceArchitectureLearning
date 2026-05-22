@@ -58,6 +58,7 @@ A **Microservices Architecture** is an architectural style that structures an ap
 *   **Problem:** In cloud-native environments, service instances scale up, scale down, or crash frequently, resulting in dynamically shifting IP addresses and port numbers. Hardcoding these endpoints inside consumer configurations causes instant system failure when network routes change.
 *   **Solution:** Implement a central **Service Registry** that acts as a dynamic database of all active service locations. When a service instance boots up, it self-registers its IP and port. Consumer services query this database at runtime to find target instances dynamically.
 
+```text
        ┌───────────────────────────────┐
        │   Discovery Server / Registry │◀──────────────────────┐
        └───────────────────────────────┘                       │
@@ -78,6 +79,8 @@ A **Microservices Architecture** is an architectural style that structures an ap
                                                            │
                                                            ▼
                                                [ Hits Service-B Directly ]
+```
+
 #### Transaction Execution Flow
 1.  **Registration:** `Service-B` spins up. It sends a REST payload containing its application ID, dynamic IP (`111.22.33.44`), and port (`9090`) to the **Discovery Service**.
 2.  **Heartbeats:** `Service-B` continually sends small, automated ping packets to the registry every 30 seconds. If a heartbeat packet is missed twice consecutively, the registry assumes the instance has crashed and purges its record.
@@ -92,6 +95,7 @@ A **Microservices Architecture** is an architectural style that structures an ap
 *   **Solution:** Deploy an **Edge Server / API Gateway** as the single entry point for all external traffic. It acts as a reverse proxy, routing incoming client requests to the appropriate downstream microservice, managing security filters globally, and load-balancing traffic.
 *   **Key Responsibilities:** Reverse Proxying, Authentication/Authorization, Rate Limiting, CORS Configuration, Path Rewriting, Request/Response Transformation.
 
+```text
 [ Client / Browser ]          [ API Gateway ]             [ Microservices ]
           │                           │                            │
           │ ─── 1. HTTP Request ────► │                            │
@@ -112,7 +116,7 @@ A **Microservices Architecture** is an architectural style that structures an ap
           │                           │                            │
           │ ◄── 6. Client Response ───│                            │
           │    (Unified Endpoint)     │                            │
-          
+```          
 #### Request Execution Lifecycle
 
 *   **1. Unified Entry Point:** The external client (web/mobile) sends a request exclusively to the public API Gateway endpoint, abstracting away the complex internal network infrastructure.
@@ -129,6 +133,7 @@ A **Microservices Architecture** is an architectural style that structures an ap
 *   **Solution:** Build services on a **Reactive, Non-Blocking Framework** that utilizes asynchronous event loops. Threads do not block while waiting for data transformations or network I/O; they register a callback handler and are instantly freed to process other incoming requests.
 *   **Key Attributes:** Responsive, Resilient, Elastic, Message-Driven (The Reactive Manifesto).
 
+```text
 [Blocking / Imperative Model]
 Request 1 ──► [Thread A] ──► (Calls DB / Remote API) ──► [Thread Blocks/Sleeps (5s)] ──► Response
 Request 2 ──► [Thread B] ──► [Waiting for available thread... Thread Starvation!]
@@ -142,7 +147,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
                │
                ▼
        (OS Signals I/O Task Complete) ──► [Event Loop Thread invokes Callback] ──► Response
-       
+```     
 #### Request Execution Lifecycle
 
 *   **1. Immediate Thread Release:** When an incoming HTTP request arrives at the reactive service boundary, an internal, lightweight event-loop thread accepts the task and begins execution.
@@ -161,7 +166,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
 *   **Industry Tools:** Spring Cloud Config Server, HashiCorp Vault, AWS Systems Manager Parameter Store.
 
 #### Architecture & Refresh Flow Diagram
-
+```text
   ┌─────────────────────────────────────────────────────────────┐
   │                   Secure Git / Vault / AWS                  │
   │                     Config Repository                       │
@@ -180,7 +185,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
        │   Inventory Service     │      │     Order Service      │
        │   [ @RefreshScope ]     │      │   [ @RefreshScope ]    │
        └─────────────────────────┘      └────────────────────────┘
-
+```
 #### Request & Refresh Lifecycle
 
 *   **1. Bootstrap Ingestion:** During the initial startup sequence, the microservice initializes a temporary minimal context and calls out to the Central Config Server over the network, passing its identity metadata and target runtime profile (e.g., `service-name=order-service, profile=production`).
@@ -196,7 +201,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
 
 #### Log Processing Pipeline Diagram
 
-
+```text
   ┌──────────────────────┐      ┌──────────────────────┐
   │   Order Service      │      │  Inventory Service   │
   │  (Writes to stdout)  │      │  (Writes to stdout)  │
@@ -225,7 +230,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
   │       Visualization Dashboard (Kibana / Grafana)   │
   │       - Global searching, metrics, & analytics     │
   └────────────────────────────────────────────────────┘
-
+```
 #### Log Processing Lifecycle
 
 *   **1. Standardized Log Emission:** Every microservice instance dumps its tracing and exception details straight to standard output (`stdout`) and standard error (`stderr`) streams using structured data layouts (such as raw JSON objects) instead of unparsed flat text blocks. This ensures consistency right at the source.
@@ -244,7 +249,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
 
 #### Context Propagation & Timeline Diagram
 
-
+```text
 [Public API Request]
        │
        ▼
@@ -270,7 +275,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
  │ Notification Service│ ──► [Span C: Dispatches Email Event (Total: 45ms)]
  └─────────────────────┘  
 
-
+```
 #### Context Propagation Lifecycle
 
 *   **1. Distributed Ingestion & Token Generation:** When a client request hits the public API Gateway layer, an ingestion interceptor generates a globally unique `Trace ID` along with an initial root `Span ID`. This instantiates the distributed tracking lifecycle context.
@@ -285,6 +290,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
 
 *   **Solution:** Wrap inter-service calls inside a **Circuit Breaker state machine**. It monitors recent network call metrics (failure rates, slow call rates). If errors exceed a configured threshold, the circuit trips **Open**, instantly short-circuiting future calls by bypassing the target service entirely and routing execution directly to a local, predictable **Fallback Method**.
 
+```text
                   ┌────────────────────────────────────────┐
                   │                                        │
                   ▼                                        │ (Success Rate
@@ -302,6 +308,8 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
             │   HALF-   │───────────┘                      │
             │   OPEN    │◄───────── Sleep Window ──────────┘
             └───────────┘           Expires
+
+```
 #### Circuit Breaker State Dynamics
 
 | State | Operational Behavior | Transition Trigger |
@@ -326,7 +334,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
 *   **Industry Tools:** Kubernetes Controllers / Operators, HashiCorp Nomad.
 
 #### Reconciliation Cycle Diagram
-
+```text
                ┌──────────────────────────────────────┐
                ▼                                      │
      ===================                              │
@@ -346,7 +354,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
      ===================      replacement instances   │
               │                                       │
               └───────────────────────────────────────┘
-
+```
 #### Reconciliation Processing Lifecycle
 
 *   **1. Real-Time Inspection (Observe):** The controller daemon wakes up on a continuous, high-frequency interval to scrape the active runtime cluster. It pulls live operational data to determine exactly what is happening on the hardware right now (e.g., counting active container nodes and verifying open network ports).
@@ -362,6 +370,8 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
 *   **Industry Tools:** Prometheus (Metrics Collection), Grafana (Visualization Dashboard), Spring Boot Actuator.
 
 #### Metrics Collection & Alerting Pipeline Diagram
+
+```text
   ┌──────────────────────┐      ┌──────────────────────┐
   │    Order Service     │      │  Inventory Service   │
   │ (/actuator/prometheus)│      │ (/actuator/prometheus)│
@@ -395,7 +405,7 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
                                 ┌────────────────────────┐
                                 │ Slack / PagerDuty / SMS│
                                 └────────────────────────┘
-
+```
 #### Metrics Processing Lifecycle
 
 *   **1. Metric Instrumentation:** Every microservice container uses local framework libraries (such as Micrometer and Spring Boot Actuator) to record processing counters, timer latencies, and physical hardware stats, exposing them cleanly over an HTTP endpoint like `/actuator/prometheus`.
