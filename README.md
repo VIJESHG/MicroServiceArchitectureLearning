@@ -147,7 +147,37 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
                │
                ▼
        (OS Signals I/O Task Complete) ──► [Event Loop Thread invokes Callback] ──► Response
-```     
+```
+```mermaid
+graph TD
+    %% Styling Configuration
+    classDef modelBox fill:#1f2937,stroke:#4b5563,stroke-width:2px,color:#fff;
+    classDef activeBox fill:#0284c7,stroke:#0ea5e9,stroke-width:2px,color:#fff;
+    classDef alertBox fill:#b91c1c,stroke:#ef4444,stroke-width:2px,color:#fff;
+
+    subgraph Blocking Model ["Blocking / Imperative Model"]
+        R1[Request 1] --> TA[Thread A]
+        TA --> DB(Calls DB / Remote API)
+        DB --> TS[Thread Blocks & Sleeps 5s]
+        TS --> Resp1(Response)
+        
+        R2[Request 2] --> TB[Thread B]
+        TB --> TS2[Thread Starvation / Waiting Pool]
+    end
+
+    subgraph Non-Blocking Model ["Non-Blocking / Reactive Model"]
+        NR1[Request 1] --> EL[Event Loop Thread]
+        EL --> OS(Dispatches I/O Task to OS Kernel)
+        OS --> Free[Event Loop is INSTANTLY Freed]
+        Free --> NR2[Handle Request 2, 3, 4...]
+        
+        OS -.->|OS Signals Task Complete| CB[Invoke Callback Context]
+        CB --> Resp2(Response)
+    end
+
+    class TA,TB,TS,TS2 alertBox;
+    class EL,OS,Free,CB activeBox;
+```    
 #### Request Execution Lifecycle
 
 *   **1. Immediate Thread Release:** When an incoming HTTP request arrives at the reactive service boundary, an internal, lightweight event-loop thread accepts the task and begins execution.
@@ -185,6 +215,28 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
        │   Inventory Service     │      │     Order Service      │
        │   [ @RefreshScope ]     │      │   [ @RefreshScope ]    │
        └─────────────────────────┘      └────────────────────────┘
+```
+```mermaid
+graph TD
+    classDef storage fill:#1f2937,stroke:#4b5563,stroke-width:2px,color:#fff;
+    classDef server fill:#7c3aed,stroke:#8b5cf6,stroke-width:2px,color:#fff;
+    classDef client fill:#0d9488,stroke:#14b8a6,stroke-width:2px,color:#fff;
+
+    Store[(Secure Git / Vault / AWS Config)] 
+    Server[Central Config Server]
+    Inv[Inventory Service <br> @RefreshScope]
+    Ord[Order Service <br> @RefreshScope]
+
+    Store -->|1. Fetch Properties| Server
+    Server -->|2. Load Properties on Startup| Inv
+    Server -->|2. Load Properties on Startup| Ord
+    
+    Bus{Spring Cloud Bus / Webhook} -->|4. Broadcast Refresh Event| Inv
+    Bus -->|4. Broadcast Refresh Event| Ord
+
+    class Store storage;
+    class Server server;
+    class Inv,Ord client;
 ```
 #### Request & Refresh Lifecycle
 
@@ -231,6 +283,21 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
   │       - Global searching, metrics, & analytics     │
   └────────────────────────────────────────────────────┘
 ```
+```mermaid
+graph LR
+    classDef node fill:#1f2937,stroke:#4b5563,stroke-width:2px,color:#fff;
+    classDef pipe fill:#d97706,stroke:#f59e0b,stroke-width:2px,color:#fff;
+
+    Ord[Order Service] -->|stdout / JSON| Ship[Log Shipper / Vector]
+    Inv[Inventory Service] -->|stdout / JSON| Ship
+    
+    Ship -->|Forward Stream| Agg[Log Aggregator / Logstash]
+    Agg -->|Parse & Clean Metadata| DB[(Elasticsearch / Loki)]
+    DB -->|Query Sub-Second| Dash[Grafana / Kibana UI]
+
+    class Ord,Inv node;
+    class Ship,Agg,DB,Dash pipe;
+```
 #### Log Processing Lifecycle
 
 *   **1. Standardized Log Emission:** Every microservice instance dumps its tracing and exception details straight to standard output (`stdout`) and standard error (`stderr`) streams using structured data layouts (such as raw JSON objects) instead of unparsed flat text blocks. This ensures consistency right at the source.
@@ -275,6 +342,25 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
  │ Notification Service│ ──► [Span C: Dispatches Email Event (Total: 45ms)]
  └─────────────────────┘  
 
+```
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Client Request
+    participant GW as API Gateway
+    participant Ord as Order Service
+    participant Pay as Payment Service
+    participant Not as Notification Service
+
+    Client->>GW: Public API Call
+    Note over GW: Generates Trace ID: XYZ-123<br/>Creates Root Span ID: A
+    GW->>Ord: HTTP Header (TraceID=XYZ-123, SpanID=A)
+    Note over Ord: Span A: Processes Order Logic (250ms)
+    Ord->>Pay: HTTP Header (TraceID=XYZ-123, SpanID=B)
+    Note over Pay: Span B: External Request (2100ms) - Bottleneck!
+    Pay->>Not: gRPC Metadata (TraceID=XYZ-123, SpanID=C)
+    Note over Not: Span C: Dispatch Event (45ms)
+    Not-->>Client: Return Complete Async Sequence
 ```
 #### Context Propagation Lifecycle
 
@@ -355,6 +441,17 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
               │                                       │
               └───────────────────────────────────────┘
 ```
+```mermaid
+graph TD
+    classDef loop fill:#059669,stroke:#10b981,stroke-width:2px,color:#fff;
+    
+    Obs[1. OBSERVE<br/>Scrape active cluster containers] --> Comp[2. COMPARE<br/>Evaluate Actual vs Desired State]
+    Comp -->|State Matches Blueprint| Obs
+    Comp -->|Variance Detected / Missing Pod| Act[3. ACT<br/>Provision replacement containers]
+    Act -->|Deploy & Converge| Obs
+
+    class Obs,Comp,Act loop;
+```
 #### Reconciliation Processing Lifecycle
 
 *   **1. Real-Time Inspection (Observe):** The controller daemon wakes up on a continuous, high-frequency interval to scrape the active runtime cluster. It pulls live operational data to determine exactly what is happening on the hardware right now (e.g., counting active container nodes and verifying open network ports).
@@ -406,6 +503,30 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
                                 │ Slack / PagerDuty / SMS│
                                 └────────────────────────┘
 ```
+```mermaid
+graph TD
+    classDef app fill:#1f2937,stroke:#4b5563,stroke-width:2px,color:#fff;
+    classDef core fill:#2563eb,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef alert fill:#ea580c,stroke:#f97316,stroke-width:2px,color:#fff;
+
+    Ord[Order Service<br/>/actuator/prometheus]
+    Inv[Inventory Service<br/>/actuator/prometheus]
+    TSDB[(Prometheus TSDB Server)]
+    Dash[Grafana Dashboard]
+    AM[Alertmanager Engine]
+    Slack[Slack / PagerDuty]
+
+    Ord -->|1. Pulls/Scrapes Every 15s| TSDB
+    Inv -->|1. Pulls/Scrapes Every 15s| TSDB
+    
+    TSDB -->|2. Visualizes Data Vectors| Dash
+    TSDB -->|3. Evaluates Threshold Rules| AM
+    AM -->|4. Dispatches Critical Alert| Slack
+
+    class Ord,Inv app;
+    class TSDB,Dash core;
+    class AM,Slack alert;
+```
 #### Metrics Processing Lifecycle
 
 *   **1. Metric Instrumentation:** Every microservice container uses local framework libraries (such as Micrometer and Spring Boot Actuator) to record processing counters, timer latencies, and physical hardware stats, exposing them cleanly over an HTTP endpoint like `/actuator/prometheus`.
@@ -413,3 +534,4 @@ Request 1 ──► [Event Loop Thread] ──► (Dispatches I/O Task to OS)
 *   **3. Time-Series Compression:** The downloaded data points are stored inside a Time-Series Database (TSDB) along with exact microsecond-precision timestamps. This engine packs down repetitive historical values into high-density files labeled with environmental tags (such as `service_name` and `deployment_env`).
 *   **4. Real-Time Visual Dashboarding:** Front-end analytical visualization software (like Grafana) queries the underlying time-series database. It translates raw mathematical data vectors into fluid dashboard graphics, line charts, and system status widgets for real-time operations review.
 *   **5. Threshold Violations & Alerting:** Automated rules run continuously against the active metrics data pool. If a threshold is crossed (such as an application container exceeding 90% memory capacity), the engine fires an alert item to a central dispatcher (like Alertmanager) which group-formats the incident and pings on-call engineers via tools like PagerDuty or Slack.
+
